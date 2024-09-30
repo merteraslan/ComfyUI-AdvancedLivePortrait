@@ -934,8 +934,7 @@ class ExpressionEditor:
             elif sample_parts == "OnlyEyes":
                 retargeting(es.e, self.d_info['exp'], sample_ratio, (1, 2, 11, 13, 15, 16))
     
-        es.r = g_engine.calc_fe(es.e, eyebrow, wink, pupil_x, pupil_y, aaa, eee, woo, smile,
-                                  rotate_pitch, rotate_yaw, rotate_roll)
+        es.r = g_engine.calc_fe(es.e, blink, eyebrow, wink, pupil_x, pupil_y, aaa, eee, woo, smile, rotate_pitch, rotate_yaw, rotate_roll)
     
         if add_exp is not None:
             es.add(add_exp)
