@@ -839,14 +839,12 @@ class ExpressionEditor:
     @classmethod
     def INPUT_TYPES(s):
         display = "number"
-        #display = "slider"
         return {
             "required": {
-
                 "rotate_pitch": ("FLOAT", {"default": 0, "min": -20, "max": 20, "step": 0.5, "display": display}),
                 "rotate_yaw": ("FLOAT", {"default": 0, "min": -20, "max": 20, "step": 0.5, "display": display}),
                 "rotate_roll": ("FLOAT", {"default": 0, "min": -20, "max": 20, "step": 0.5, "display": display}),
-
+    
                 "blink": ("FLOAT", {"default": 0, "min": -20, "max": 5, "step": 0.5, "display": display}),
                 "eyebrow": ("FLOAT", {"default": 0, "min": -10, "max": 15, "step": 0.5, "display": display}),
                 "wink": ("FLOAT", {"default": 0, "min": 0, "max": 25, "step": 0.5, "display": display}),
@@ -856,18 +854,23 @@ class ExpressionEditor:
                 "eee": ("FLOAT", {"default": 0, "min": -20, "max": 15, "step": 0.2, "display": display}),
                 "woo": ("FLOAT", {"default": 0, "min": -20, "max": 15, "step": 0.2, "display": display}),
                 "smile": ("FLOAT", {"default": 0, "min": -0.3, "max": 1.3, "step": 0.01, "display": display}),
-
+    
                 "src_ratio": ("FLOAT", {"default": 1, "min": 0, "max": 1, "step": 0.01, "display": display}),
                 "sample_ratio": ("FLOAT", {"default": 1, "min": -0.2, "max": 1.2, "step": 0.01, "display": display}),
                 "sample_parts": (["OnlyExpression", "OnlyRotation", "OnlyMouth", "OnlyEyes", "All"],),
                 "crop_factor": ("FLOAT", {"default": crop_factor_default,
                                           "min": crop_factor_min, "max": crop_factor_max, "step": 0.1}),
             },
-
-            "optional": {"src_image": ("IMAGE",), "motion_link": ("EDITOR_LINK",),
-                         "sample_image": ("IMAGE",), "add_exp": ("EXP_DATA",),
+    
+            "optional": {
+                "src_image": ("IMAGE",),
+                "motion_link": ("EDITOR_LINK",),
+                "sample_image": ("IMAGE",),
+                "add_exp": ("EXP_DATA",),
+                "subfolder": ("STRING", {"default": "", "optional": True}),  # Added subfolder
             },
         }
+
 
     RETURN_TYPES = ("IMAGE", "EDITOR_LINK", "EXP_DATA")
     RETURN_NAMES = ("image", "motion_link", "save_exp")
@@ -882,14 +885,14 @@ class ExpressionEditor:
     # OUTPUT_IS_LIST = (False,)
 
     def run(self, rotate_pitch, rotate_yaw, rotate_roll, blink, eyebrow, wink, pupil_x, pupil_y, aaa, eee, woo, smile,
-            src_ratio, sample_ratio, sample_parts, crop_factor, src_image=None, sample_image=None, motion_link=None, add_exp=None):
+            src_ratio, sample_ratio, sample_parts, crop_factor, src_image=None, sample_image=None, motion_link=None, add_exp=None, subfolder=""):
         rotate_yaw = -rotate_yaw
-
+    
         new_editor_link = None
-        if motion_link != None:
+        if motion_link is not None:
             self.psi = motion_link[0]
             new_editor_link = motion_link.copy()
-        elif src_image != None:
+        elif src_image is not None:
             if id(src_image) != id(self.src_image) or self.crop_factor != crop_factor:
                 self.crop_factor = crop_factor
                 self.psi = g_engine.prepare_source(src_image, crop_factor)
@@ -897,20 +900,19 @@ class ExpressionEditor:
             new_editor_link = []
             new_editor_link.append(self.psi)
         else:
-            return (None,None)
-
+            return (None, None)
+    
         pipeline = g_engine.get_pipeline()
-
+    
         psi = self.psi
         s_info = psi.x_s_info
-        #delta_new = copy.deepcopy()
         s_exp = s_info['exp'] * src_ratio
         s_exp[0, 5] = s_info['exp'][0, 5]
         s_exp += s_info['kp']
-
+    
         es = ExpressionSet()
-
-        if sample_image != None:
+    
+        if sample_image is not None:
             if id(self.sample_image) != id(sample_image):
                 self.sample_image = sample_image
                 d_image_np = (sample_image * 255).byte().numpy()
@@ -919,11 +921,11 @@ class ExpressionEditor:
                 self.d_info = pipeline.get_kp_info(i_d)
                 self.d_info['exp'][0, 5, 0] = 0
                 self.d_info['exp'][0, 5, 1] = 0
-
+    
             # "OnlyExpression", "OnlyRotation", "OnlyMouth", "OnlyEyes", "All"
-            if sample_parts == "OnlyExpression" or sample_parts == "All":
+            if sample_parts in ["OnlyExpression", "All"]:
                 es.e += self.d_info['exp'] * sample_ratio
-            if sample_parts == "OnlyRotation" or sample_parts == "All":
+            if sample_parts in ["OnlyRotation", "All"]:
                 rotate_pitch += self.d_info['pitch'] * sample_ratio
                 rotate_yaw += self.d_info['yaw'] * sample_ratio
                 rotate_roll += self.d_info['roll'] * sample_ratio
@@ -931,37 +933,45 @@ class ExpressionEditor:
                 retargeting(es.e, self.d_info['exp'], sample_ratio, (14, 17, 19, 20))
             elif sample_parts == "OnlyEyes":
                 retargeting(es.e, self.d_info['exp'], sample_ratio, (1, 2, 11, 13, 15, 16))
-
-        es.r = g_engine.calc_fe(es.e, blink, eyebrow, wink, pupil_x, pupil_y, aaa, eee, woo, smile,
+    
+        es.r = g_engine.calc_fe(es.e, eyebrow, wink, pupil_x, pupil_y, aaa, eee, woo, smile,
                                   rotate_pitch, rotate_yaw, rotate_roll)
-
-        if add_exp != None:
+    
+        if add_exp is not None:
             es.add(add_exp)
-
+    
         new_rotate = get_rotation_matrix(s_info['pitch'] + es.r[0], s_info['yaw'] + es.r[1],
                                          s_info['roll'] + es.r[2])
         x_d_new = (s_info['scale'] * (1 + es.s)) * ((s_exp + es.e) @ new_rotate) + s_info['t']
-
+    
         x_d_new = pipeline.stitching(psi.x_s_user, x_d_new)
-
+    
         crop_out = pipeline.warp_decode(psi.f_s_user, psi.x_s_user, x_d_new)
         crop_out = pipeline.parse_output(crop_out['out'])[0]
-
+    
         crop_with_fullsize = cv2.warpAffine(crop_out, psi.crop_trans_m, get_rgb_size(psi.src_rgb), cv2.INTER_LINEAR)
         out = np.clip(psi.mask_ori * crop_with_fullsize + (1 - psi.mask_ori) * psi.src_rgb, 0, 255).astype(np.uint8)
-
+    
         out_img = pil2tensor(out)
-
-        filename = g_engine.get_temp_img_name() #"fe_edit_preview.png"
+    
+        filename = g_engine.get_temp_img_name()  #"fe_edit_preview.png"
         folder_paths.get_save_image_path(filename, folder_paths.get_temp_directory())
         img = Image.fromarray(crop_out)
         img.save(os.path.join(folder_paths.get_temp_directory(), filename), compress_level=1)
-        results = list()
-        results.append({"filename": filename, "type": "temp"})
-
+        results = []
+        results.append({
+            "filename": filename,
+            "type": "temp",
+            "subfolder": subfolder  # Added subfolder
+        })
+    
         new_editor_link.append(es)
+    
+        return {
+            "ui": {"images": results},
+            "result": (out_img, new_editor_link, es)
+        }
 
-        return {"ui": {"images": results}, "result": (out_img, new_editor_link, es)}
 
 NODE_CLASS_MAPPINGS = {
     "AdvancedLivePortrait": AdvancedLivePortrait,
